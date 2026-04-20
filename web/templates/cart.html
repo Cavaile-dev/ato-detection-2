@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cart - LUXE Store</title>
+    <meta name="description" content="Review your cart - LUXE Store">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <a href="/shop" class="nav-brand"><span>◆</span> LUXE</a>
+        <div class="nav-actions">
+            <a href="/shop" class="btn btn-ghost btn-sm">Shop</a>
+            <a href="/wallet" class="btn btn-ghost btn-sm">Wallet</a>
+            <a href="/dashboard" class="btn btn-ghost btn-sm">Dashboard</a>
+            <a href="/database" class="btn btn-ghost btn-sm">Database</a>
+            <button class="cart-btn" onclick="window.location.href='/cart'">
+                🛒 Cart <span id="cartBadge" class="cart-badge"></span>
+            </button>
+            <div class="nav-user">
+                <span id="navUsername" class="nav-user-name"></span>
+                <button id="logoutBtn" class="btn btn-ghost btn-sm">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-container">
+        <h1 class="cart-section-title fade-up">Shopping Cart</h1>
+
+        <div id="cartContent"></div>
+    </div>
+
+    <div id="messageContainer"></div>
+
+    <script src="/static/js/logger.js"></script>
+    <script src="/static/js/shop-app.js"></script>
+</body>
+</html>

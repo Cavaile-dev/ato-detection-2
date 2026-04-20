@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Active Session - Behavioral Biometrics System</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="session-container">
+        <header class="session-header">
+            <h1>Active Session</h1>
+            <div class="user-info">
+                <span id="usernameDisplay"></span>
+                <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+                <button id="dashboardBtn" class="btn btn-primary" onclick="window.location.href='/dashboard'">Dashboard</button>
+                <button id="databaseBtn" class="btn btn-primary" onclick="window.location.href='/database'">Database</button>
+            </div>
+        </header>
+
+        <main class="session-main">
+            <div class="session-info">
+                <div class="info-card">
+                    <h3>Session Status</h3>
+                    <div class="status-item">
+                        <span class="label">Session ID:</span>
+                        <span id="sessionId" class="value">-</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Events Captured:</span>
+                        <span id="eventCount" class="value">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Baseline Completed:</span>
+                        <span id="baselineStatus" class="value">-</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Risk Level:</span>
+                        <span id="riskLevel" class="value">-</span>
+                    </div>
+                </div>
+
+                <div class="info-card">
+                    <h3>Instructions</h3>
+                    <div id="instructions">
+                        <p><strong>Baseline Sessions Required:</strong></p>
+                        <p>Please complete 3 normal sessions to establish your behavioral baseline.</p>
+                        <p>During these sessions:</p>
+                        <ul>
+                            <li>Use your natural typing rhythm</li>
+                            <li>Move the mouse normally</li>
+                            <li>Navigate the page as you typically would</li>
+                            <li>Spend 2-3 minutes per session</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="session-activity">
+                <div class="activity-log">
+                    <h3>Activity Log</h3>
+                    <div id="activityLog" class="log-container"></div>
+                </div>
+
+                <div class="session-actions">
+                    <button id="submitEventsBtn" class="btn btn-success">Submit Events</button>
+                    <button id="assessBtn" class="btn btn-warning">Get Risk Assessment</button>
+                    <button id="trainModelBtn" class="btn btn-info">Train Model</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="messageContainer"></div>
+
+    <script src="/static/js/logger.js"></script>
+    <script src="/static/js/session-app.js"></script>
+</body>
+</html>

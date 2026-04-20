@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - LUXE Store</title>
+    <meta name="description" content="Sign in to LUXE Store - Premium Electronics">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <span class="logo-icon">◆</span>
+                <h1>LUXE</h1>
+                <p class="subtitle">Premium Electronics Store</p>
+            </div>
+
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        class="form-control"
+                        placeholder="Enter your username"
+                        required
+                        autocomplete="username"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        class="form-control"
+                        placeholder="Enter your password"
+                        required
+                        autocomplete="current-password"
+                    >
+                </div>
+
+                <button type="submit" id="loginBtn" class="btn btn-primary btn-block btn-lg">
+                    Sign In
+                </button>
+            </form>
+
+            <div class="login-footer">
+                <p>Don't have an account? <a href="#" id="showRegister">Create one</a></p>
+            </div>
+        </div>
+
+        <div id="messageContainer"></div>
+    </div>
+
+    <script src="/static/js/logger.js"></script>
+    <script>
+        // Initialize behavior logger
+        const behaviorLogger = new BehaviorLogger();
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('loginBtn');
+            btn.textContent = 'Signing in...';
+            btn.disabled = true;
+
+            // Stop behavior logging
+            behaviorLogger.stop();
+            const events = behaviorLogger.getEvents();
+
+            try {
+                const response = await fetch('/api/v1/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    sessionStorage.setItem('userId', result.data.user_id);
+                    sessionStorage.setItem('username', result.data.username);
+                    sessionStorage.setItem('sessionId', result.data.session_id);
+                    sessionStorage.setItem('baselineCompleted', result.data.baseline_completed);
+
+                    showMessage('Welcome back! Redirecting...', 'success');
+                    setTimeout(() => { window.location.href = '/shop'; }, 800);
+                } else {
+                    showMessage(result.detail || result.error || 'Login failed', 'error');
+                    btn.textContent = 'Sign In';
+                    btn.disabled = false;
+                    behaviorLogger.start();
+                }
+            } catch (error) {
+                showMessage('Connection error. Please try again.', 'error');
+                btn.textContent = 'Sign In';
+                btn.disabled = false;
+                behaviorLogger.start();
+            }
+        });
+
+        document.getElementById('showRegister').addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            const username = prompt('Choose a username:');
+            if (!username) return;
+
+            const password = prompt('Choose a password:');
+            if (!password) return;
+
+            try {
+                const response = await fetch('/api/v1/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage('Account created! Please sign in.', 'success');
+                    document.getElementById('username').value = username;
+                    document.getElementById('password').focus();
+                } else {
+                    showMessage(result.detail || 'Registration failed', 'error');
+                }
+            } catch (error) {
+                showMessage('Connection error. Please try again.', 'error');
+            }
+        });
+
+        function showMessage(message, type) {
+            const container = document.getElementById('messageContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `alert alert-${type}`;
+            messageDiv.textContent = message;
+            container.appendChild(messageDiv);
+            setTimeout(() => { messageDiv.remove(); }, 4000);
+        }
+
+        behaviorLogger.start();
+    </script>
+</body>
+</html>

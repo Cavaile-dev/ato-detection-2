@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - LUXE Security</title>
+    <meta name="description" content="Behavioral Biometrics Security Dashboard">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <a href="/shop" class="nav-brand"><span>◆</span> LUXE</a>
+        <div class="nav-actions">
+            <a href="/shop" class="btn btn-ghost btn-sm">Shop</a>
+            <a href="/wallet" class="btn btn-ghost btn-sm">Wallet</a>
+            <a href="/dashboard" class="btn btn-ghost btn-sm" style="color:var(--text-primary);">Dashboard</a>
+            <a href="/database" class="btn btn-ghost btn-sm">Database</a>
+            <button class="cart-btn" onclick="window.location.href='/cart'">
+                🛒 Cart <span id="cartBadge" class="cart-badge"></span>
+            </button>
+            <div class="nav-user">
+                <span id="navUsername" class="nav-user-name"></span>
+                <button id="logoutBtn" class="btn btn-ghost btn-sm">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div class="dash-header fade-up">
+            <div>
+                <h1 class="dash-title">Security Dashboard</h1>
+                <p class="dash-subtitle">Behavioral Biometrics &amp; Risk Monitoring</p>
+            </div>
+            <div class="dash-header-actions">
+                <span class="dash-model-status" id="modelStatus">
+                    <span class="status-dot"></span> Model: Loading...
+                </span>
+                <button id="refreshBtn" class="btn btn-secondary btn-sm">↻ Refresh</button>
+                <button id="trainModelBtn" class="btn btn-primary btn-sm">Train Model</button>
+            </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <section class="dash-stats fade-up fade-up-delay-1">
+            <div class="dash-stat-card">
+                <div class="dash-stat-icon">👥</div>
+                <div class="dash-stat-info">
+                    <div class="dash-stat-value" id="totalUsers">0</div>
+                    <div class="dash-stat-label">Total Users</div>
+                </div>
+            </div>
+            <div class="dash-stat-card">
+                <div class="dash-stat-icon">🔐</div>
+                <div class="dash-stat-info">
+                    <div class="dash-stat-value" id="totalSessions">0</div>
+                    <div class="dash-stat-label">Total Sessions</div>
+                </div>
+            </div>
+            <div class="dash-stat-card">
+                <div class="dash-stat-icon">⚡</div>
+                <div class="dash-stat-info">
+                    <div class="dash-stat-value" id="totalEvents">0</div>
+                    <div class="dash-stat-label">Events Captured</div>
+                </div>
+            </div>
+            <div class="dash-stat-card">
+                <div class="dash-stat-icon active-pulse">●</div>
+                <div class="dash-stat-info">
+                    <div class="dash-stat-value" id="activeSessions">0</div>
+                    <div class="dash-stat-label">Active Sessions</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Row -->
+        <section class="dash-charts fade-up fade-up-delay-2">
+            <div class="dash-card">
+                <h3 class="dash-card-title">Risk Distribution Today</h3>
+                <div class="chart-wrapper">
+                    <canvas id="riskChart"></canvas>
+                </div>
+                <div class="risk-counts" id="riskCounts">
+                    <div class="risk-count-item">
+                        <span class="risk-dot risk-dot-low"></span>
+                        <span class="risk-count-label">Low</span>
+                        <span class="risk-count-value" id="lowRiskCount">0</span>
+                    </div>
+                    <div class="risk-count-item">
+                        <span class="risk-dot risk-dot-medium"></span>
+                        <span class="risk-count-label">Medium</span>
+                        <span class="risk-count-value" id="medRiskCount">0</span>
+                    </div>
+                    <div class="risk-count-item">
+                        <span class="risk-dot risk-dot-high"></span>
+                        <span class="risk-count-label">High</span>
+                        <span class="risk-count-value" id="highRiskCount">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dash-card">
+                <h3 class="dash-card-title">Average Risk Score</h3>
+                <div class="risk-gauge-container">
+                    <div class="risk-gauge-ring" id="riskGaugeRing">
+                        <div class="risk-gauge-inner">
+                            <div class="risk-gauge-value" id="avgRiskScore">0.000</div>
+                            <div class="risk-gauge-label">anomaly score</div>
+                        </div>
+                    </div>
+                    <div class="risk-gauge-legend">
+                        <span class="legend-item"><span class="risk-dot risk-dot-low"></span> 0.0 – 0.5 Low</span>
+                        <span class="legend-item"><span class="risk-dot risk-dot-medium"></span> 0.5 – 0.8 Medium</span>
+                        <span class="legend-item"><span class="risk-dot risk-dot-high"></span> 0.8 – 1.0 High</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Bottom Row -->
+        <section class="dash-bottom fade-up fade-up-delay-2">
+            <!-- Left Column: Users and Sessions -->
+            <div class="dash-sidebar">
+                <!-- Top Users -->
+                <div class="dash-card">
+                    <h3 class="dash-card-title">Top Users</h3>
+                    <div id="topUsers" class="dash-user-list"></div>
+                </div>
+
+                <!-- Recent Sessions -->
+                <div class="dash-card" style="margin-top: 24px;">
+                    <h3 class="dash-card-title">Recent Sessions</h3>
+                    <div id="recentSessions" class="dash-session-list"></div>
+                </div>
+            </div>
+
+            <!-- Right Column: Session Replay -->
+            <div class="dash-card dash-card-wide">
+                <h3 class="dash-card-title">Session Replay</h3>
+                <div class="replay-controls">
+                    <input type="text" id="replaySessionId" class="form-control" placeholder="Enter Session ID to replay">
+                    <button id="loadReplayBtn" class="btn btn-primary btn-sm">Load</button>
+                </div>
+                <div class="replay-canvas-wrapper">
+                    <canvas id="replayCanvas"></canvas>
+                </div>
+                <div class="replay-stats">
+                    <div class="replay-stat-item">
+                        <div class="replay-stat-label">Events</div>
+                        <div class="replay-stat-value" id="replayEventCount">0</div>
+                    </div>
+                    <div class="replay-stat-item">
+                        <div class="replay-stat-label">Duration</div>
+                        <div class="replay-stat-value" id="replayDuration">0s</div>
+                    </div>
+                    <div class="replay-stat-item">
+                        <div class="replay-stat-label">Risk Level</div>
+                        <div class="replay-stat-value" id="replayRiskLevel">—</div>
+                    </div>
+                    <div class="replay-stat-item">
+                        <div class="replay-stat-label">Score</div>
+                        <div class="replay-stat-value" id="replayScore">—</div>
+                    </div>
+                </div>
+
+                <!-- 32 Features Visualization -->
+                <div class="features-explorer" id="featuresExplorer" style="display: none;">
+                    <h4 class="features-title">Extracted Behavioral Features</h4>
+                    <div class="features-grid">
+                        <!-- Mouse Features -->
+                        <div class="feature-category">
+                            <h5>🖱️ Mouse Dynamics (12)</h5>
+                            <div class="feature-list" id="mouseFeaturesList"></div>
+                        </div>
+                        <!-- Keystroke Features -->
+                        <div class="feature-category">
+                            <h5>⌨️ Keystroke Dynamics (10)</h5>
+                            <div class="feature-list" id="keyFeaturesList"></div>
+                        </div>
+                        <!-- Temporal & Navigation -->
+                        <div class="feature-category">
+                            <h5>⏳ Temporal & Nav (8)</h5>
+                            <div class="feature-list" id="temporalNavFeaturesList"></div>
+                        </div>
+                        <!-- Cross-modal -->
+                        <div class="feature-category">
+                            <h5>🔄 Cross-modal (2)</h5>
+                            <div class="feature-list" id="crossFeaturesList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div id="messageContainer"></div>
+
+    <script src="/static/js/logger.js"></script>
+    <script src="/static/js/shop-app.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

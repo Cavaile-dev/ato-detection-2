@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet - LUXE Store</title>
+    <meta name="description" content="Your LUXE Wallet - Manage your balance">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <a href="/shop" class="nav-brand"><span>◆</span> LUXE</a>
+        <div class="nav-actions">
+            <a href="/shop" class="btn btn-ghost btn-sm">Shop</a>
+            <a href="/wallet" class="btn btn-ghost btn-sm" style="color:var(--text-primary);">Wallet</a>
+            <a href="/dashboard" class="btn btn-ghost btn-sm">Dashboard</a>
+            <a href="/database" class="btn btn-ghost btn-sm">Database</a>
+            <button class="cart-btn" onclick="window.location.href='/cart'">
+                🛒 Cart <span id="cartBadge" class="cart-badge"></span>
+            </button>
+            <div class="nav-user">
+                <span id="navUsername" class="nav-user-name"></span>
+                <button id="logoutBtn" class="btn btn-ghost btn-sm">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-container">
+        <!-- Wallet Balance Card -->
+        <div class="wallet-hero fade-up">
+            <div class="wallet-balance-card">
+                <div class="wallet-balance-label">Available Balance</div>
+                <div class="wallet-balance-amount">
+                    <span class="wallet-currency">Rp</span>
+                    <span id="walletBalance">2.450.000</span>
+                </div>
+                <div class="wallet-account-info">
+                    <span class="wallet-account-id" id="walletAccountId">••••  ••••  ••••  4829</span>
+                    <span class="wallet-status">● Active</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="wallet-actions fade-up fade-up-delay-1">
+            <button class="wallet-action-btn" id="topUpBtn">
+                <span class="wallet-action-icon">↑</span>
+                <span class="wallet-action-label">Top Up</span>
+            </button>
+            <button class="wallet-action-btn" id="transferBtn">
+                <span class="wallet-action-icon">→</span>
+                <span class="wallet-action-label">Transfer</span>
+            </button>
+            <button class="wallet-action-btn" id="withdrawBtn">
+                <span class="wallet-action-icon">↓</span>
+                <span class="wallet-action-label">Withdraw</span>
+            </button>
+            <button class="wallet-action-btn" id="historyBtn">
+                <span class="wallet-action-icon">☰</span>
+                <span class="wallet-action-label">History</span>
+            </button>
+        </div>
+
+        <!-- Top Up Modal (inline) -->
+        <div class="wallet-modal" id="topUpModal" style="display:none;">
+            <div class="checkout-section">
+                <h3>Top Up Balance</h3>
+                <div class="wallet-topup-amounts">
+                    <button class="topup-chip" data-amount="50000">Rp 50.000</button>
+                    <button class="topup-chip" data-amount="100000">Rp 100.000</button>
+                    <button class="topup-chip" data-amount="200000">Rp 200.000</button>
+                    <button class="topup-chip" data-amount="500000">Rp 500.000</button>
+                    <button class="topup-chip" data-amount="1000000">Rp 1.000.000</button>
+                    <button class="topup-chip" data-amount="2000000">Rp 2.000.000</button>
+                </div>
+                <div class="form-group" style="margin-top:16px;">
+                    <label for="customAmount">Or enter custom amount</label>
+                    <input type="text" id="customAmount" class="form-control" placeholder="Enter amount">
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="btn btn-primary" id="confirmTopUp">Confirm Top Up</button>
+                    <button class="btn btn-secondary" id="cancelTopUp">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transfer Modal (inline) -->
+        <div class="wallet-modal" id="transferModal" style="display:none;">
+            <div class="checkout-section">
+                <h3>Transfer Funds</h3>
+                <div class="form-group">
+                    <label for="recipientId">Recipient Account / Phone</label>
+                    <input type="text" id="recipientId" class="form-control" placeholder="Enter account or phone number">
+                </div>
+                <div class="form-group">
+                    <label for="transferAmount">Amount</label>
+                    <input type="text" id="transferAmount" class="form-control" placeholder="Enter amount">
+                </div>
+                <div class="form-group">
+                    <label for="transferNote">Note (optional)</label>
+                    <input type="text" id="transferNote" class="form-control" placeholder="e.g. Lunch money">
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="btn btn-primary" id="confirmTransfer">Send Transfer</button>
+                    <button class="btn btn-secondary" id="cancelTransfer">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction History -->
+        <div class="wallet-history fade-up fade-up-delay-2">
+            <h2 class="wallet-section-title">Recent Transactions</h2>
+            <div class="wallet-tx-list" id="txList">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <div id="messageContainer"></div>
+
+    <script src="/static/js/logger.js"></script>
+    <script src="/static/js/shop-app.js"></script>
+    <script src="/static/js/wallet-app.js"></script>
+</body>
+</html>

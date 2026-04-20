@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database - LUXE Security</title>
+    <meta name="description" content="Database Manager">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+    <style>
+        .db-container {
+            margin-top: 32px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            box-shadow: var(--shadow-md);
+        }
+        .db-table-wrapper {
+            overflow-x: auto;
+        }
+        .db-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            text-align: left;
+        }
+        .db-table th, .db-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .db-table th {
+            font-weight: 600;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.02);
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+        .db-table tr:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .db-table td.mono {
+            font-family: monospace;
+            color: var(--text-muted);
+        }
+        .btn-delete {
+            background: transparent;
+            color: var(--danger);
+            border: 1px solid var(--danger);
+            padding: 4px 12px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all var(--transition-fast);
+        }
+        .btn-delete:hover {
+            background: var(--danger);
+            color: white;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 48px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <a href="/shop" class="nav-brand"><span>◆</span> LUXE</a>
+        <div class="nav-actions">
+            <a href="/shop" class="btn btn-ghost btn-sm">Shop</a>
+            <a href="/wallet" class="btn btn-ghost btn-sm">Wallet</a>
+            <a href="/dashboard" class="btn btn-ghost btn-sm">Dashboard</a>
+            <a href="/database" class="btn btn-ghost btn-sm" style="color:var(--text-primary);">Database</a>
+            <button class="cart-btn" onclick="window.location.href='/cart'">
+                🛒 Cart <span id="cartBadge" class="cart-badge"></span>
+            </button>
+            <div class="nav-user">
+                <span id="navUsername" class="nav-user-name"></span>
+                <button id="logoutBtn" class="btn btn-ghost btn-sm">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div class="dash-header fade-up">
+            <div>
+                <h1 class="dash-title">Database Manager</h1>
+                <p class="dash-subtitle">Manage Raw Events and Extracted Features</p>
+            </div>
+            <div class="dash-header-actions">
+                <button id="refreshDbBtn" class="btn btn-secondary btn-sm">↻ Refresh</button>
+            </div>
+        </div>
+
+        <div class="db-container fade-up fade-up-delay-1">
+            <div class="db-table-wrapper">
+                <table class="db-table">
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>User</th>
+                            <th>Start Time</th>
+                            <th>Events</th>
+                            <th>Risk Level</th>
+                            <th>Score</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dbTableBody">
+                        <tr>
+                            <td colspan="7" class="empty-state">Loading data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="messageContainer"></div>
+
+    <script src="/static/js/logger.js"></script>
+    <script src="/static/js/shop-app.js"></script>
+    <script src="/static/js/database.js"></script>
+</body>
+</html>

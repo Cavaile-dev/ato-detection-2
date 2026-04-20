@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shop - LUXE Store</title>
+    <meta name="description" content="Browse premium electronics at LUXE Store">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <a href="/shop" class="nav-brand"><span>◆</span> LUXE</a>
+        <div class="nav-actions">
+            <a href="/shop" class="btn btn-ghost btn-sm" style="color:var(--text-primary);">Shop</a>
+            <a href="/wallet" class="btn btn-ghost btn-sm">Wallet</a>
+            <a href="/dashboard" class="btn btn-ghost btn-sm">Dashboard</a>
+            <a href="/database" class="btn btn-ghost btn-sm">Database</a>
+            <button id="cartBtn" class="cart-btn" onclick="window.location.href='/cart'">
+                🛒 Cart <span id="cartBadge" class="cart-badge"></span>
+            </button>
+            <div class="nav-user">
+                <span id="navUsername" class="nav-user-name"></span>
+                <button id="logoutBtn" class="btn btn-ghost btn-sm">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-container">
+        <!-- Hero -->
+        <section class="hero fade-up">
+            <h1>Premium Electronics</h1>
+            <p>Curated collection of the finest tech for the modern lifestyle</p>
+        </section>
+
+        <!-- Category Filters -->
+        <div class="category-filters fade-up fade-up-delay-1">
+            <button class="filter-btn active" data-category="all">All</button>
+            <button class="filter-btn" data-category="audio">Audio</button>
+            <button class="filter-btn" data-category="computing">Computing</button>
+            <button class="filter-btn" data-category="mobile">Mobile</button>
+            <button class="filter-btn" data-category="accessories">Accessories</button>
+        </div>
+
+        <!-- Product Grid -->
+        <div id="productGrid" class="product-grid fade-up fade-up-delay-2"></div>
+    </div>
+
+    <div id="messageContainer"></div>
+
+    <script src="/static/js/logger.js"></script>
+    <script src="/static/js/shop-app.js"></script>
+</body>
+</html>
