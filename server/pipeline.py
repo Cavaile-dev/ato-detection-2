@@ -217,12 +217,25 @@ class ProcessingPipeline:
     def end_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         """End a session and perform final assessment"""
         session_state = self.get_session(session_id)
-        if not session_state:
-            return None
+        
+        # Get baseline status and user_id from session_state or db
+        is_baseline = False
+        user_id = None
+        
+        if session_state:
+            is_baseline = session_state.is_baseline
+            user_id = session_state.user_id
+        else:
+            db_session = db.get_session(session_id)
+            if db_session:
+                is_baseline = bool(db_session.get('is_baseline', False))
+                user_id = db_session.get('user_id')
+            else:
+                return None
 
         # Perform final assessment
         assessment = None
-        if not session_state.is_baseline and self.ensemble_model.is_model_trained():
+        if session_state and not is_baseline and self.ensemble_model.is_model_trained():
             assessment = self._assess_session(session_state)
 
             # Update session in database
@@ -234,20 +247,20 @@ class ProcessingPipeline:
                     action=assessment['action']
                 )
 
-        # Extract and save features for training
-        events = session_state.get_events()
-        if events:
-            features = self.feature_extractor.extract_features(events)
+        # Extract and save features for training using ALL session events
+        all_events = db.get_session_events(session_id)
+        if all_events:
+            features = self.feature_extractor.extract_features(all_events)
             db.save_features(session_id, features)
 
         # If baseline session, update user baseline count
-        if session_state.is_baseline:
-            db.increment_baseline_count(session_state.user_id)
+        if is_baseline and user_id:
+            db.increment_baseline_count(user_id)
 
             # Check if baseline is complete
-            user = db.get_user_by_id(session_state.user_id)
+            user = db.get_user_by_id(user_id)
             if user and user.get('baseline_count', 0) >= MIN_BASELINE_SESSIONS:
-                db.set_baseline_completed(session_state.user_id)
+                db.set_baseline_completed(user_id)
 
         # Mark session as ended in database
         db.end_session(session_id)

@@ -101,11 +101,34 @@ class DatabaseManager {
                     <td>${score}</td>
                     <td style="display: flex; gap: 8px;">
                         <button class="btn btn-ghost btn-sm" onclick="dbManager.showDetail('${s.session_id}')" style="padding: 4px 12px; font-size: 12px; border: 1px solid var(--border-subtle);">Detail</button>
+                        ${isActive ? `<button class="btn btn-warning btn-sm" onclick="dbManager.forceEndSession('${s.session_id}')" style="padding: 4px 12px; font-size: 12px; border: 1px solid var(--warning); background: transparent; color: var(--warning);">Force End</button>` : ''}
                         <button class="btn-delete" onclick="dbManager.deleteSession('${s.session_id}')">Delete</button>
                     </td>
                 </tr>
             `;
         }).join('');
+    }
+
+    async forceEndSession(sessionId) {
+        if (!confirm('Are you sure you want to force end this session? This will finalize its data and status.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/sessions/${sessionId}/end`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                this.loadSessions();
+            } else {
+                alert('Failed to force end session: ' + (result.detail || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error force ending session:', error);
+            alert('An error occurred while force ending the session.');
+        }
     }
 
     async deleteSession(sessionId) {

@@ -90,13 +90,13 @@ class FeatureExtractor:
             prev = mouse_events[i-1]
             curr = mouse_events[i]
 
-            dt = curr.get('timestamp', 0) - prev.get('timestamp', 0)
+            dt = (curr.get('timestamp') or 0) - (prev.get('timestamp') or 0)
             if dt == 0:
                 continue
 
             # Position
-            x1, y1 = prev.get('x', 0), prev.get('y', 0)
-            x2, y2 = curr.get('x', 0), curr.get('y', 0)
+            x1, y1 = prev.get('x') or 0, prev.get('y') or 0
+            x2, y2 = curr.get('x') or 0, curr.get('y') or 0
 
             # Velocity
             dx = x2 - x1
@@ -131,7 +131,7 @@ class FeatureExtractor:
             # Curvature (for 3+ points)
             if i >= 2:
                 prev2 = mouse_events[i-2]
-                x0, y0 = prev2.get('x', 0), prev2.get('y', 0)
+                x0, y0 = prev2.get('x') or 0, prev2.get('y') or 0
 
                 # Calculate curvature using three points
                 area = x0*(y1 - y2) + x1*(y2 - y0) + x2*(y0 - y1)
@@ -150,13 +150,13 @@ class FeatureExtractor:
         ]
         click_intervals = []
         for i in range(1, len(click_events)):
-            interval = click_events[i].get('timestamp', 0) - click_events[i-1].get('timestamp', 0)
+            interval = (click_events[i].get('timestamp') or 0) - (click_events[i-1].get('timestamp') or 0)
             click_intervals.append(interval)
 
         # Calculate pauses (periods of inactivity)
         pauses = []
         for i in range(1, len(mouse_events)):
-            dt = mouse_events[i].get('timestamp', 0) - mouse_events[i-1].get('timestamp', 0)
+            dt = (mouse_events[i].get('timestamp') or 0) - (mouse_events[i-1].get('timestamp') or 0)
             if dt > 100:  # 100ms threshold for pause
                 pauses.append(dt)
 
@@ -197,7 +197,7 @@ class FeatureExtractor:
         # Flight times (time between keystrokes)
         flight_times = []
         for i in range(1, len(keystroke_events)):
-            dt = keystroke_events[i].get('timestamp', 0) - keystroke_events[i-1].get('timestamp', 0)
+            dt = (keystroke_events[i].get('timestamp') or 0) - (keystroke_events[i-1].get('timestamp') or 0)
             flight_times.append(dt)
 
         # Calculate typing consistency (coefficient of variation)
@@ -289,11 +289,11 @@ class FeatureExtractor:
         # Session duration
         first_event = self.event_buffer[0]
         last_event = self.event_buffer[-1]
-        session_duration = (last_event.get('timestamp', 0) - first_event.get('timestamp', 0)) / 1000.0  # seconds
+        session_duration = ((last_event.get('timestamp') or 0) - (first_event.get('timestamp') or 0)) / 1000.0  # seconds
 
         # Time of day score (normalized 0-1)
         import datetime
-        first_time = datetime.datetime.fromtimestamp(first_event.get('timestamp', 0) / 1000.0)
+        first_time = datetime.datetime.fromtimestamp((first_event.get('timestamp') or 0) / 1000.0)
         hour_of_day = first_time.hour + first_time.minute / 60.0
         time_of_day_score = hour_of_day / 24.0  # Normalize to 0-1
 
@@ -301,7 +301,7 @@ class FeatureExtractor:
         # Group events by time windows (1 second)
         time_windows = defaultdict(int)
         for event in self.event_buffer:
-            window = int(event.get('timestamp', 0) / 1000)
+            window = int((event.get('timestamp') or 0) / 1000)
             time_windows[window] += 1
 
         activity_counts = list(time_windows.values())
@@ -316,7 +316,7 @@ class FeatureExtractor:
         if len(self.event_buffer) > 1:
             gaps = []
             for i in range(1, len(self.event_buffer)):
-                gap = self.event_buffer[i].get('timestamp', 0) - self.event_buffer[i-1].get('timestamp', 0)
+                gap = (self.event_buffer[i].get('timestamp') or 0) - (self.event_buffer[i-1].get('timestamp') or 0)
                 gaps.append(gap)
 
             idle_threshold = 2000  # 2 seconds
@@ -359,10 +359,11 @@ class FeatureExtractor:
         for event in nav_events:
             url = event.get('page_url', '')
             if url:
+                ts = event.get('timestamp') or 0
                 if url not in page_map:
-                    page_map[url] = {'first': event.get('timestamp', 0), 'last': event.get('timestamp', 0)}
+                    page_map[url] = {'first': ts, 'last': ts}
                 else:
-                    page_map[url]['last'] = event.get('timestamp', 0)
+                    page_map[url]['last'] = ts
 
         for page_data in page_map.values():
             duration = (page_data['last'] - page_data['first']) / 1000.0
@@ -378,14 +379,14 @@ class FeatureExtractor:
         ]
 
         scroll_deltas = [
-            abs(e.get('scroll_delta', 0))
+            abs(e.get('scroll_delta') or 0)
             for e in scroll_events
         ]
         scroll_depth_mean = float(np.mean(scroll_deltas)) if scroll_deltas else 0.0
 
         # Scroll velocity
         scroll_velocities = [
-            e.get('scroll_velocity', 0)
+            e.get('scroll_velocity') or 0
             for e in scroll_events
             if e.get('scroll_velocity') is not None
         ]
@@ -424,7 +425,7 @@ class FeatureExtractor:
         # Merge and sort by timestamp
         all_events = sorted(
             mouse_events + keyboard_events,
-            key=lambda x: x.get('timestamp', 0)
+            key=lambda x: x.get('timestamp') or 0
         )
 
         for event in all_events:
