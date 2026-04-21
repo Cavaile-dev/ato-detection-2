@@ -34,13 +34,16 @@
             <p>Curated collection of the finest tech for the modern lifestyle</p>
         </section>
 
-        <!-- Category Filters -->
-        <div class="category-filters fade-up fade-up-delay-1">
-            <button class="filter-btn active" data-category="all">All</button>
-            <button class="filter-btn" data-category="audio">Audio</button>
-            <button class="filter-btn" data-category="computing">Computing</button>
-            <button class="filter-btn" data-category="mobile">Mobile</button>
-            <button class="filter-btn" data-category="accessories">Accessories</button>
+        <!-- Search and Filters -->
+        <div class="category-filters fade-up fade-up-delay-1" style="display: flex; flex-direction: column; gap: 16px; align-items: center;">
+            <input type="text" id="searchBar" class="form-control" placeholder="Search products (type here to test keystroke logging...)" style="max-width: 400px; width: 100%;">
+            <div>
+                <button class="filter-btn active" data-category="all">All</button>
+                <button class="filter-btn" data-category="audio">Audio</button>
+                <button class="filter-btn" data-category="computing">Computing</button>
+                <button class="filter-btn" data-category="mobile">Mobile</button>
+                <button class="filter-btn" data-category="accessories">Accessories</button>
+            </div>
         </div>
 
         <!-- Product Grid -->

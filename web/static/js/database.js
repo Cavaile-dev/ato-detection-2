@@ -30,7 +30,20 @@ class DatabaseManager {
         });
 
         // Load data
+        this.sessions = [];
         this.loadSessions();
+
+        const searchInput = document.getElementById('dbSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                const filtered = this.sessions.filter(s => {
+                    const searchStr = `${s.session_id} ${s.username} ${s.risk_level} ${s.start_time}`.toLowerCase();
+                    return searchStr.includes(term);
+                });
+                this.renderSessions(filtered);
+            });
+        }
     }
 
     async loadSessions() {
@@ -42,7 +55,8 @@ class DatabaseManager {
             const result = await response.json();
 
             if (result.success && result.data.sessions) {
-                this.renderSessions(result.data.sessions);
+                this.sessions = result.data.sessions;
+                this.renderSessions(this.sessions);
             } else {
                 tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Failed to load sessions.</td></tr>';
             }
@@ -78,7 +92,8 @@ class DatabaseManager {
                     <td>${s.event_count}</td>
                     <td style="color: ${riskColor}; font-weight: 600;">${risk}</td>
                     <td>${score}</td>
-                    <td>
+                    <td style="display: flex; gap: 8px;">
+                        <button class="btn btn-ghost btn-sm" onclick="dbManager.showDetail('${s.session_id}')" style="padding: 4px 12px; font-size: 12px; border: 1px solid var(--border-subtle);">Detail</button>
                         <button class="btn-delete" onclick="dbManager.deleteSession('${s.session_id}')">Delete</button>
                     </td>
                 </tr>
@@ -116,6 +131,26 @@ class DatabaseManager {
         el.textContent = msg;
         container.appendChild(el);
         setTimeout(() => el.remove(), 3000);
+    }
+
+    showDetail(sessionId) {
+        const s = this.sessions.find(session => session.session_id === sessionId);
+        if (!s) return;
+
+        const details = `
+Session ID: ${s.session_id}
+User: ${s.username} (ID: ${s.user_id})
+Risk Level: ${s.risk_level || 'N/A'}
+Anomaly Score: ${s.anomaly_score !== null ? s.anomaly_score : 'N/A'}
+Action Taken: ${s.action || 'None'}
+Start Time: ${new Date(s.start_time).toLocaleString()}
+End Time: ${s.end_time ? new Date(s.end_time).toLocaleString() : 'Active/Incomplete'}
+Event Count: ${s.event_count}
+IP Address: ${s.ip_address || 'Unknown'}
+Baseline Session: ${s.is_baseline ? 'Yes' : 'No'}
+        `.trim();
+
+        alert("Session Details:\n\n" + details);
     }
 }
 

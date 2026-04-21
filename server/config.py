@@ -108,7 +108,7 @@ ASSESSMENT_INTERVAL = 10  # Assess every N events
 
 # Session configuration
 MIN_BASELINE_SESSIONS = 3
-MIN_TRAINING_SAMPLES = 10
+MIN_TRAINING_SAMPLES = 3
 SESSION_TIMEOUT_MINUTES = 30
 
 # Risk scoring thresholds

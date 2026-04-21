@@ -181,6 +181,39 @@ class ShopApp {
         // Start behavior logging
         this.behaviorLogger.start();
         this.startPeriodicSubmission();
+        
+        // Handle browser close/exit
+        this.setupExitHandler();
+    }
+
+    setupExitHandler() {
+        // Track internal navigation
+        document.addEventListener('click', (e) => {
+            const a = e.target.closest('a');
+            if (a && a.href && a.host === window.location.host) {
+                window.isInternalNavigation = true;
+            }
+        });
+
+        // Form submissions also count as internal navigation
+        document.addEventListener('submit', () => {
+            window.isInternalNavigation = true;
+        });
+
+        window.addEventListener('beforeunload', (e) => {
+            if (!window.isInternalNavigation) {
+                // Not an internal navigation, meaning user is leaving or closing tab
+                this.behaviorLogger.stop();
+                const events = this.behaviorLogger.getEvents();
+                
+                // Use sendBeacon for reliable delivery during page unload
+                const payload = JSON.stringify({
+                    session_id: this.sessionId,
+                    events: events
+                });
+                navigator.sendBeacon('/api/v1/sessions/beacon_end', payload);
+            }
+        });
     }
 
     // ===== SHOP PAGE =====
@@ -188,15 +221,27 @@ class ShopApp {
         this.renderProducts(PRODUCTS);
 
         // Category filters
+        const filterProducts = () => {
+            const searchTerm = (document.getElementById('searchBar')?.value || '').toLowerCase();
+            const filtered = PRODUCTS.filter(p => {
+                const matchesCategory = this.currentFilter === 'all' || p.category === this.currentFilter;
+                const matchesSearch = p.name.toLowerCase().includes(searchTerm) || p.description.toLowerCase().includes(searchTerm);
+                return matchesCategory && matchesSearch;
+            });
+            this.renderProducts(filtered);
+        };
+
+        const searchBar = document.getElementById('searchBar');
+        if (searchBar) {
+            searchBar.addEventListener('input', filterProducts);
+        }
+
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 this.currentFilter = btn.dataset.category;
-                const filtered = this.currentFilter === 'all'
-                    ? PRODUCTS
-                    : PRODUCTS.filter(p => p.category === this.currentFilter);
-                this.renderProducts(filtered);
+                filterProducts();
             });
         });
     }

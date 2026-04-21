@@ -466,6 +466,32 @@ def end_session(session_id: str):
             detail=str(e)
         ).model_dump()), 500
 
+@app.route('/api/v1/sessions/beacon_end', methods=['POST'])
+def beacon_end():
+    """Handle browser close via navigator.sendBeacon"""
+    try:
+        data = request.get_json(force=True, silent=True)
+        if not data:
+            return jsonify({"success": False}), 400
+            
+        session_id = data.get('session_id')
+        events = data.get('events', [])
+        
+        if not session_id:
+            return jsonify({"success": False}), 400
+            
+        if events:
+            # Re-use the pipeline process_events to save raw events
+            pipeline.process_events(session_id, events)
+            
+        # End the session
+        pipeline.end_session(session_id)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Beacon end error: {e}")
+        return jsonify({"success": False}), 500
+
+
 
 @app.route('/api/v1/model/train', methods=['POST'])
 @validate_request(TrainModelRequest)
