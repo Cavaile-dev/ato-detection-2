@@ -38,7 +38,8 @@ class DatabaseManager {
             searchInput.addEventListener('input', (e) => {
                 const term = e.target.value.toLowerCase();
                 const filtered = this.sessions.filter(s => {
-                    const searchStr = `${s.session_id} ${s.username} ${s.risk_level} ${s.start_time}`.toLowerCase();
+                    const statusText = s.end_time ? 'completed' : 'active';
+                    const searchStr = `${s.session_id} ${s.username} ${s.risk_level} ${s.start_time} ${statusText}`.toLowerCase();
                     return searchStr.includes(term);
                 });
                 this.renderSessions(filtered);
@@ -83,6 +84,11 @@ class DatabaseManager {
 
             const score = s.anomaly_score !== null ? parseFloat(s.anomaly_score).toFixed(3) : '—';
             const risk = s.risk_level || '—';
+            
+            const isActive = !s.end_time;
+            const statusHtml = isActive 
+                ? '<span style="color: var(--success); font-weight: 600; display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: var(--success); border-radius: 50%; box-shadow: 0 0 8px var(--success); animation: pulse 2s infinite;"></span> Active</span>'
+                : '<span style="color: var(--text-muted);">Completed</span>';
 
             return `
                 <tr>
@@ -90,6 +96,7 @@ class DatabaseManager {
                     <td>${s.username}</td>
                     <td>${date}</td>
                     <td>${s.event_count}</td>
+                    <td>${statusHtml}</td>
                     <td style="color: ${riskColor}; font-weight: 600;">${risk}</td>
                     <td>${score}</td>
                     <td style="display: flex; gap: 8px;">
@@ -133,24 +140,72 @@ class DatabaseManager {
         setTimeout(() => el.remove(), 3000);
     }
 
-    showDetail(sessionId) {
+    async showDetail(sessionId) {
         const s = this.sessions.find(session => session.session_id === sessionId);
         if (!s) return;
 
-        const details = `
-Session ID: ${s.session_id}
-User: ${s.username} (ID: ${s.user_id})
-Risk Level: ${s.risk_level || 'N/A'}
-Anomaly Score: ${s.anomaly_score !== null ? s.anomaly_score : 'N/A'}
-Action Taken: ${s.action || 'None'}
-Start Time: ${new Date(s.start_time).toLocaleString()}
-End Time: ${s.end_time ? new Date(s.end_time).toLocaleString() : 'Active/Incomplete'}
-Event Count: ${s.event_count}
-IP Address: ${s.ip_address || 'Unknown'}
-Baseline Session: ${s.is_baseline ? 'Yes' : 'No'}
-        `.trim();
+        const modal = document.getElementById('detailModal');
+        const loading = document.getElementById('modalLoading');
+        const body = document.getElementById('modalBody');
+        
+        modal.style.display = 'flex';
+        loading.style.display = 'block';
+        body.style.display = 'none';
 
-        alert("Session Details:\n\n" + details);
+        // Fetch complete replay data (which includes features)
+        try {
+            const response = await fetch(`/api/v1/sessions/${sessionId}/replay`);
+            const result = await response.json();
+            
+            loading.style.display = 'none';
+            body.style.display = 'block';
+            
+            if (result.success && result.data) {
+                const data = result.data;
+                const f = data.features || {};
+                
+                let riskColor = 'var(--text-muted)';
+                if (data.risk_level === 'HIGH') riskColor = 'var(--danger)';
+                else if (data.risk_level === 'MEDIUM') riskColor = 'var(--warning)';
+                else if (data.risk_level === 'LOW') riskColor = 'var(--success)';
+
+                // Overview
+                document.getElementById('modalOverview').innerHTML = `
+                    <div><strong>Session ID:</strong> <span class="mono">${data.session_id}</span></div>
+                    <div><strong>User ID:</strong> ${s.user_id} (${s.username})</div>
+                    <div><strong>Start Time:</strong> ${new Date(s.start_time).toLocaleString()}</div>
+                    <div><strong>End Time:</strong> ${s.end_time ? new Date(s.end_time).toLocaleString() : 'Active/Incomplete'}</div>
+                    <div><strong>Baseline:</strong> ${s.is_baseline ? 'Yes' : 'No'}</div>
+                    <div><strong>Event Count:</strong> ${s.event_count || (data.events ? data.events.length : 0)}</div>
+                `;
+
+                // Risk
+                document.getElementById('modalRisk').innerHTML = `
+                    <div><strong>Risk Level:</strong> <span style="color: ${riskColor}; font-weight: bold;">${data.risk_level || s.risk_level || 'N/A'}</span></div>
+                    <div><strong>Anomaly Score:</strong> ${data.anomaly_score !== null ? parseFloat(data.anomaly_score).toFixed(4) : (s.anomaly_score !== null ? parseFloat(s.anomaly_score).toFixed(4) : 'N/A')}</div>
+                    <div><strong>Action Taken:</strong> ${s.action || 'None'}</div>
+                    <div><strong>IP Address:</strong> ${s.ip_address || 'Unknown'}</div>
+                `;
+
+                // Features
+                if (Object.keys(f).length > 0) {
+                    document.getElementById('modalFeatures').innerHTML = Object.entries(f).map(([k, v]) => `
+                        <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 4px; border-left: 2px solid var(--primary-color);">
+                            <div style="color: var(--text-muted); font-size: 11px; margin-bottom: 4px;">${k.replace(/_/g, ' ').toUpperCase()}</div>
+                            <div class="mono" style="font-weight: 600;">${typeof v === 'number' ? v.toFixed(4) : v}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('modalFeatures').innerHTML = `<div style="grid-column: 1/-1; color: var(--text-muted); padding: 16px;">No features extracted yet (session might still be active or insufficient events).</div>`;
+                }
+            } else {
+                body.innerHTML = `<div style="color: var(--danger); padding: 20px;">Failed to load details: ${result.detail || 'Unknown error'}</div>`;
+            }
+        } catch (error) {
+            loading.style.display = 'none';
+            body.style.display = 'block';
+            body.innerHTML = `<div style="color: var(--danger); padding: 20px;">Error connecting to server.</div>`;
+        }
     }
 }
 
@@ -158,4 +213,16 @@ Baseline Session: ${s.is_baseline ? 'Yes' : 'No'}
 let dbManager;
 document.addEventListener('DOMContentLoaded', () => {
     dbManager = new DatabaseManager();
+    
+    // Setup Modal Close
+    document.getElementById('closeModalBtn')?.addEventListener('click', () => {
+        document.getElementById('detailModal').style.display = 'none';
+    });
+    
+    // Close modal on click outside
+    document.getElementById('detailModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'detailModal') {
+            e.target.style.display = 'none';
+        }
+    });
 });
