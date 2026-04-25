@@ -126,6 +126,18 @@ class Database:
                 )
             """)
 
+            # User profile table for progressive personalization
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    user_id INTEGER PRIMARY KEY,
+                    sample_count INTEGER DEFAULT 0,
+                    feature_mean TEXT NOT NULL,
+                    feature_std TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+
             # Create indexes for better query performance
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_sessions_user_id
@@ -150,6 +162,11 @@ class Database:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_features_session_id
                 ON features(session_id)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id
+                ON user_profiles(user_id)
             """)
 
     # User operations
@@ -493,6 +510,77 @@ class Database:
 
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
+
+    def get_profile_features(self, user_id: int) -> List[Dict[str, Any]]:
+        """
+        Get user features used to build personal profile.
+        Includes baseline sessions and low-risk sessions only.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT f.*
+                FROM features f
+                JOIN sessions s ON f.session_id = s.session_id
+                WHERE s.user_id = ?
+                  AND (s.is_baseline = 1 OR s.risk_level = 'LOW')
+                ORDER BY f.created_at ASC
+                """,
+                (user_id,)
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def upsert_user_profile(
+        self,
+        user_id: int,
+        sample_count: int,
+        feature_mean: Dict[str, float],
+        feature_std: Dict[str, float]
+    ) -> None:
+        """Create or update user profile statistics."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO user_profiles (
+                    user_id, sample_count, feature_mean, feature_std, updated_at
+                )
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    sample_count = excluded.sample_count,
+                    feature_mean = excluded.feature_mean,
+                    feature_std = excluded.feature_std,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    user_id,
+                    sample_count,
+                    json.dumps(feature_mean),
+                    json.dumps(feature_std)
+                )
+            )
+
+    def get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Get personalized profile for a user."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM user_profiles
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            profile = dict(row)
+            profile['feature_mean'] = json.loads(profile.get('feature_mean') or "{}")
+            profile['feature_std'] = json.loads(profile.get('feature_std') or "{}")
+            return profile
 
     # Model operations
     def save_model_metadata(

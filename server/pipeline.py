@@ -4,23 +4,28 @@ Handles real-time event processing and risk assessment
 """
 
 import threading
-import time
 import uuid
 from collections import deque
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import logging
+import numpy as np
 
 from server.config import (
     ROLLING_WINDOW_SIZE,
     MIN_EVENTS_FOR_ASSESSMENT,
     ASSESSMENT_INTERVAL,
-    MIN_BASELINE_SESSIONS
+    MIN_BASELINE_SESSIONS,
+    ENABLE_PROGRESSIVE_BLEND,
+    MIN_PERSONAL_PROFILE_SAMPLES,
+    PERSONAL_BLEND_START_SAMPLES,
+    PERSONAL_BLEND_FULL_SAMPLES
 )
 from server.database import db
 from server.feature_extraction import FeatureExtractor
 from server.models.ensemble import EnsembleModel
-from server.risk_engine import RiskEngine, RiskAssessment
+from server.personal_profile import PersonalProfileScorer
+from server.risk_engine import RiskEngine
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +60,6 @@ class SessionState:
     def should_assess(self) -> bool:
         """Check if we should perform a risk assessment"""
         with self.lock:
-            if self.is_baseline:
-                return False  # Don't assess baseline sessions
             return (
                 self.event_count >= MIN_EVENTS_FOR_ASSESSMENT and
                 self.event_count % ASSESSMENT_INTERVAL == 0
@@ -75,6 +78,7 @@ class ProcessingPipeline:
         self.active_sessions: Dict[str, SessionState] = {}
         self.feature_extractor = FeatureExtractor()
         self.ensemble_model = EnsembleModel()
+        self.personal_scorer = PersonalProfileScorer()
         self.risk_engine = RiskEngine()
         self.lock = threading.Lock()
         self.is_running = False
@@ -151,17 +155,18 @@ class ProcessingPipeline:
         }
 
         # Perform assessment if needed
-        if session_state.should_assess() and self.ensemble_model.is_model_trained():
+        if session_state.should_assess() and self._has_any_scoring_model(session_state.user_id):
             assessment = self._assess_session(session_state)
-            result['assessment'] = assessment
+            if assessment:
+                result['assessment'] = assessment
 
-            # Update session in database
-            db.update_session_risk_assessment(
-                session_id=session_id,
-                anomaly_score=assessment['anomaly_score'],
-                risk_level=assessment['risk_level'],
-                action=assessment['action']
-            )
+                # Update session in database
+                db.update_session_risk_assessment(
+                    session_id=session_id,
+                    anomaly_score=assessment['anomaly_score'],
+                    risk_level=assessment['risk_level'],
+                    action=assessment['action']
+                )
 
         return result
 
@@ -176,13 +181,40 @@ class ProcessingPipeline:
         features = self.feature_extractor.extract_features(events)
         session_state.features = features
 
-        # Get prediction with details
-        prediction = self.ensemble_model.predict_with_details(features)
+        user_profile = db.get_user_profile(session_state.user_id)
+        profile_samples = int((user_profile or {}).get('sample_count', 0) or 0)
+
+        global_score = None
+        global_details = {}
+        if self.ensemble_model.is_model_trained():
+            prediction = self.ensemble_model.predict_with_details(features)
+            global_score = prediction['ensemble_score']
+            global_details = prediction['individual_scores']
+
+        personal_score = self.personal_scorer.score(features, user_profile)
+
+        global_weight, personal_weight = self._get_blend_weights(profile_samples)
+
+        # Fall back to available score source
+        if global_score is None and personal_score is None:
+            return None
+        if global_score is None:
+            blended_score = personal_score
+            global_weight, personal_weight = 0.0, 1.0
+        elif personal_score is None:
+            blended_score = global_score
+            global_weight, personal_weight = 1.0, 0.0
+        else:
+            blended_score = (global_score * global_weight) + (personal_score * personal_weight)
 
         # Assess risk
         assessment = self.risk_engine.assess_risk(
-            anomaly_score=prediction['ensemble_score'],
-            individual_scores=prediction['individual_scores'],
+            anomaly_score=blended_score,
+            individual_scores={
+                **global_details,
+                'global_ensemble': global_score,
+                'personal_profile': personal_score
+            },
             features=features,
             session_context={
                 'user_id': session_state.user_id,
@@ -190,6 +222,24 @@ class ProcessingPipeline:
                 'is_baseline': session_state.is_baseline
             }
         )
+
+        assessment['scoring'] = {
+            'strategy': 'progressive_blend' if ENABLE_PROGRESSIVE_BLEND else 'global_only',
+            'global_score': global_score,
+            'personal_score': personal_score,
+            'global_weight': float(global_weight),
+            'personal_weight': float(personal_weight),
+            'profile_samples': profile_samples,
+            'min_personal_samples': MIN_PERSONAL_PROFILE_SAMPLES
+        }
+        if personal_weight == 0.0:
+            assessment['reasons'].append("Cold start mode: decision relies on global behavior model")
+        elif global_weight == 0.0:
+            assessment['reasons'].append("Personalized mode: decision relies on personal behavior profile")
+        else:
+            assessment['reasons'].append(
+                f"Progressive blend active: global {global_weight:.2f}, personal {personal_weight:.2f}"
+            )
 
         session_state.latest_assessment = assessment
 
@@ -209,7 +259,7 @@ class ProcessingPipeline:
         if not session_state:
             return None
 
-        if not self.ensemble_model.is_model_trained():
+        if not self._has_any_scoring_model(session_state.user_id):
             return None
 
         return self._assess_session(session_state)
@@ -235,7 +285,7 @@ class ProcessingPipeline:
 
         # Perform final assessment
         assessment = None
-        if session_state and not is_baseline and self.ensemble_model.is_model_trained():
+        if session_state and self._has_any_scoring_model(user_id):
             assessment = self._assess_session(session_state)
 
             # Update session in database
@@ -252,6 +302,8 @@ class ProcessingPipeline:
         if all_events:
             features = self.feature_extractor.extract_features(all_events)
             db.save_features(session_id, features)
+            if user_id:
+                self._refresh_user_profile(user_id)
 
         # If baseline session, update user baseline count
         if is_baseline and user_id:
@@ -293,10 +345,69 @@ class ProcessingPipeline:
             logger.warning(f"Could not load model: {e}")
             return False
 
+    def _refresh_user_profile(self, user_id: int) -> Optional[int]:
+        """Recompute and persist profile stats from benign user sessions."""
+        rows = db.get_profile_features(user_id)
+        if not rows:
+            return None
+
+        X = []
+        from server.config import FEATURE_COLUMNS
+        for row in rows:
+            X.append([float(row.get(col, 0.0) or 0.0) for col in FEATURE_COLUMNS])
+
+        X = np.array(X)
+        mean_map = {}
+        std_map = {}
+        for i, col in enumerate(FEATURE_COLUMNS):
+            mean_map[col] = float(np.mean(X[:, i]))
+            std_map[col] = float(np.std(X[:, i]))
+
+        sample_count = int(X.shape[0])
+        db.upsert_user_profile(
+            user_id=user_id,
+            sample_count=sample_count,
+            feature_mean=mean_map,
+            feature_std=std_map
+        )
+        return sample_count
+
+    def _get_blend_weights(self, profile_samples: int) -> Tuple[float, float]:
+        """Return (global_weight, personal_weight)."""
+        if not ENABLE_PROGRESSIVE_BLEND:
+            return 1.0, 0.0
+
+        if profile_samples < PERSONAL_BLEND_START_SAMPLES:
+            return 1.0, 0.0
+
+        if PERSONAL_BLEND_FULL_SAMPLES <= PERSONAL_BLEND_START_SAMPLES:
+            return 0.0, 1.0
+
+        ratio = (profile_samples - PERSONAL_BLEND_START_SAMPLES) / (
+            PERSONAL_BLEND_FULL_SAMPLES - PERSONAL_BLEND_START_SAMPLES
+        )
+        personal_weight = float(np.clip(ratio, 0.0, 1.0))
+        global_weight = 1.0 - personal_weight
+        return global_weight, personal_weight
+
+    def _has_any_scoring_model(self, user_id: Optional[int]) -> bool:
+        """Check whether global model or a valid personal profile is available."""
+        if self.ensemble_model.is_model_trained():
+            return True
+
+        if not user_id:
+            return False
+
+        profile = db.get_user_profile(user_id)
+        if not profile:
+            return False
+
+        return int(profile.get('sample_count', 0) or 0) >= MIN_PERSONAL_PROFILE_SAMPLES
+
     def train_model(self, user_id: Optional[int] = None) -> Dict[str, Any]:
         """Train model with collected data"""
-        # Get training data
-        training_data = db.get_all_features_for_training(user_id)
+        # Train global model using all baseline sessions
+        training_data = db.get_all_features_for_training(user_id=None)
 
         if not training_data:
             return {
@@ -312,7 +423,7 @@ class ProcessingPipeline:
             features = [row.get(col, 0.0) for col in FEATURE_COLUMNS]
             X.append(features)
 
-        X = np.array(X)
+        X = np.array(X, dtype=float)
 
         # Train model
         try:
@@ -327,19 +438,25 @@ class ProcessingPipeline:
             version = os.path.getmtime(ENSEMBLE_MODEL) if ENSEMBLE_MODEL.exists() else 0
 
             db.save_model_metadata(
-                user_id=user_id,
+                user_id=None,
                 model_type='ensemble',
                 version=str(version),
                 samples_used=len(X),
                 accuracy_metrics=metrics.get('ensemble', {})
             )
 
+            profile_samples = None
+            if user_id:
+                profile_samples = self._refresh_user_profile(user_id)
+
             return {
                 'success': True,
-                'message': 'Model trained successfully',
+                'message': 'Global model trained successfully',
                 'samples_used': len(X),
                 'metrics': metrics,
-                'model_version': str(version)
+                'model_version': str(version),
+                'global_model': True,
+                'personal_profile_samples': profile_samples
             }
 
         except Exception as e:
@@ -353,6 +470,3 @@ class ProcessingPipeline:
 
 # Global pipeline instance
 pipeline = ProcessingPipeline()
-
-# Import numpy at module level for train_model
-import numpy as np
