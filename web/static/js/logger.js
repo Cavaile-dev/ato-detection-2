@@ -11,7 +11,9 @@ class BehaviorLogger {
         this.lastMousePosition = { x: 0, y: 0 };
         this.lastMouseTime = 0;
         this.lastKeystrokeTime = 0;
+        this.lastScrollTime = 0;
         this.keyDownTime = {};
+        this.scrollListenerOptions = { passive: true };
 
         // Throttling parameters
         this.mouseMoveThrottle = 16; // ~60fps
@@ -38,8 +40,8 @@ class BehaviorLogger {
         document.addEventListener('mousemove', this.handleMouseMove);
         document.addEventListener('click', this.handleMouseClick);
 
-        // Scroll events
-        document.addEventListener('scroll', this.handleScroll, true);
+        // Wheel events provide reliable delta values for scroll analysis.
+        document.addEventListener('wheel', this.handleScroll, this.scrollListenerOptions);
 
         // Keyboard events
         document.addEventListener('keydown', this.handleKeyDown);
@@ -60,7 +62,7 @@ class BehaviorLogger {
         // Remove event listeners
         document.removeEventListener('mousemove', this.handleMouseMove);
         document.removeEventListener('click', this.handleMouseClick);
-        document.removeEventListener('scroll', this.handleScroll, true);
+        document.removeEventListener('wheel', this.handleScroll, this.scrollListenerOptions);
         document.removeEventListener('keydown', this.handleKeyDown);
         document.removeEventListener('keyup', this.handleKeyUp);
         document.removeEventListener('copy', this.handleCopy);
@@ -158,6 +160,10 @@ class BehaviorLogger {
         const now = Date.now();
 
         const scrollDelta = e.deltaY;
+        if (!Number.isFinite(scrollDelta) || scrollDelta === 0) {
+            return;
+        }
+
         let scrollVelocity = 0;
 
         if (this.lastScrollTime) {

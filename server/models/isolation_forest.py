@@ -4,12 +4,11 @@ Unsupervised anomaly detection algorithm
 """
 
 import numpy as np
-import pandas as pd
 from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 import joblib
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 
 from server.config import (
     FEATURE_COLUMNS,
@@ -25,7 +24,7 @@ class IsolationForestModel:
 
     def __init__(self):
         self.model = None
-        self.scaler = StandardScaler()
+        self.scaler = RobustScaler()
         self.is_trained = False
         self.feature_names = FEATURE_COLUMNS
 
@@ -50,9 +49,9 @@ class IsolationForestModel:
         self.model = IsolationForest(
             contamination=ISOLATION_FOREST_CONTAMINATION,
             n_estimators=ISOLATION_FOREST_N_ESTIMATORS,
-            max_samples=ISOLATION_FOREST_MAX_SAMPLES,
+            max_samples=min(ISOLATION_FOREST_MAX_SAMPLES, len(X_scaled)),
             random_state=42,
-            n_jobs=-1
+            n_jobs=1
         )
 
         self.model.fit(X_scaled)

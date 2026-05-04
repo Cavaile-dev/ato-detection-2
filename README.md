@@ -73,24 +73,26 @@ The server will start on `http://127.0.0.1:5000`
 2. Click "Register" to create a new account
 3. Login with your credentials
 
-### Step 2: Complete Baseline Sessions
+### Step 2: Collect Training-Valid Sessions
 
-1. Complete **3 baseline sessions** to establish your behavioral profile
-2. Use natural typing and mouse movements
-3. Each session should last 2-3 minutes
-4. Navigate the page normally
+1. Login and browse the `shop`, `cart`, `checkout`, or `wallet` pages naturally
+2. A session becomes **valid for training** when it is ended and contains at least **30 behavioral events**
+3. Use natural typing, scrolling, and mouse movements across the flow
+4. Collect several completed sessions before training a model
 
 ### Step 3: Train the Model
 
-1. After completing 3+ baseline sessions, click "Train Model"
-2. The system will train an ensemble model on your behavioral data
-3. Wait for training confirmation
+1. Open **Dashboard**
+2. Click **Train Model**
+3. Choose **global** or **personal** scope, feature subset, and minimum sample count
+4. Wait for training confirmation
 
 ### Step 4: Monitor for Anomalies
 
 1. Continue using the system normally
 2. The system will automatically detect anomalous behavior
 3. Risk levels: **LOW** (allow), **MEDIUM** (require MFA), **HIGH** (block)
+4. Lower anomaly scores are riskier: `< 0.0 = HIGH`, `0.0 - 0.5 = MEDIUM`, `> 0.5 = LOW`
 
 ### Step 5: View Dashboard
 
@@ -129,11 +131,15 @@ To test the anomaly detection:
 - `POST /api/v1/events` - Submit behavioral events
 - `POST /api/v1/sessions/assess` - Get risk assessment
 - `POST /api/v1/sessions/{id}/end` - End session
+- `POST /api/v1/sessions/{id}/force-end` - Force-end a session from database UI
 
 ### Model & Dashboard
 - `POST /api/v1/model/train` - Train anomaly detection model
+- `GET /api/v1/users` - List users for personal model training
+- `GET /api/v1/models/options` - List available reassessment models
 - `GET /api/v1/dashboard/stats` - Get dashboard statistics
 - `GET /api/v1/sessions/{id}/replay` - Get session replay data
+- `POST /api/v1/sessions/{id}/reassess` - Re-run risk prediction with selected model
 
 ## 🧠 ML Models
 
@@ -175,7 +181,7 @@ To test the anomaly detection:
 ## 🎓 For Black Hat Demo
 
 ### Live Demo Tips
-1. **Prepare beforehand**: Have 3+ baseline sessions ready
+1. **Prepare beforehand**: Have several completed training-valid sessions ready
 2. **Train model**: Train before the presentation
 3. **Test attacks**: Have attack scenarios prepared
 4. **Show dashboard**: Demonstrate session replay
@@ -189,14 +195,14 @@ To test the anomaly detection:
 ## 🛠️ Troubleshooting
 
 ### Model not trained
-- Ensure you have 3+ baseline sessions
+- Ensure you have enough completed training-valid sessions
 - Check that events were submitted successfully
 - Try training with more samples
 
 ### High false positive rate
-- Increase baseline session count
+- Increase the number of completed training-valid sessions
 - Adjust risk thresholds in config.py
-- Ensure natural behavior during baseline
+- Ensure natural behavior during data collection
 
 ### Dashboard not loading
 - Check browser console for errors
@@ -206,15 +212,16 @@ To test the anomaly detection:
 ## 📝 Dependencies
 
 ```
-flask==3.0.0
+flask==3.1.3
 flask-cors==4.0.0
+werkzeug==3.1.0
 scikit-learn==1.3.2
 numpy==1.24.3
-pandas==2.1.4
+pandas==2.0.3
 joblib==1.3.2
 tensorflow==2.15.0
 pydantic==2.5.0
-werkzeug==3.0.1
+python-dotenv==1.0.0
 ```
 
 ## 🤝 Contributing

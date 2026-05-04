@@ -5,12 +5,12 @@ Handles all SQLite database operations including schema creation and CRUD operat
 
 import sqlite3
 import json
-from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from contextlib import contextmanager
 
 from server.config import DB_PATH, FEATURE_COLUMNS
+from server.time_utils import now_in_app_tz, now_in_app_tz_iso, to_app_tz_datetime, to_app_tz_iso
 
 
 class Database:
@@ -19,6 +19,36 @@ class Database:
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
         self.init_database()
+        self.migrate_timestamps_to_app_timezone()
+
+    @staticmethod
+    def _normalize_timestamp(value: Any) -> Any:
+        if value is None:
+            return None
+        normalized = to_app_tz_iso(value)
+        return normalized if normalized else value
+
+    def _normalize_record_timestamps(
+        self,
+        record: Dict[str, Any],
+        fields: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        if not record:
+            return record
+
+        normalized = dict(record)
+        timestamp_fields = fields or ['created_at', 'start_time', 'end_time', 'trained_at']
+        for field_name in timestamp_fields:
+            if field_name in normalized and normalized[field_name]:
+                normalized[field_name] = self._normalize_timestamp(normalized[field_name])
+        return normalized
+
+    def _normalize_records_timestamps(
+        self,
+        records: List[Dict[str, Any]],
+        fields: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        return [self._normalize_record_timestamps(record, fields=fields) for record in records]
 
     @contextmanager
     def get_connection(self):
@@ -61,7 +91,7 @@ class Database:
                     ip_address TEXT,
                     device_fingerprint TEXT,
                     user_agent TEXT,
-                    is_baseline BOOLEAN DEFAULT 1,
+                    is_baseline BOOLEAN DEFAULT 0,
                     event_count INTEGER DEFAULT 0,
                     anomaly_score REAL,
                     risk_level TEXT,
@@ -126,6 +156,13 @@ class Database:
                 )
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS app_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
+
             # Create indexes for better query performance
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_sessions_user_id
@@ -152,6 +189,60 @@ class Database:
                 ON features(session_id)
             """)
 
+    def migrate_timestamps_to_app_timezone(self) -> None:
+        """
+        Normalize legacy naive UTC timestamps to ISO-8601 in configured timezone.
+        This migration is idempotent because timezone-aware values convert to
+        the same wall-clock representation on subsequent runs.
+        """
+        migration_key = 'timestamps_migrated_to_app_timezone_v1'
+        targets = [
+            ('users', 'id', 'created_at'),
+            ('sessions', 'session_id', 'start_time'),
+            ('sessions', 'session_id', 'end_time'),
+            ('raw_events', 'id', 'created_at'),
+            ('features', 'id', 'created_at'),
+            ('models', 'id', 'trained_at'),
+        ]
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT value FROM app_metadata WHERE key = ?",
+                (migration_key,)
+            )
+            row = cursor.fetchone()
+            if row and row['value'] == '1':
+                return
+
+            for table_name, pk_name, col_name in targets:
+                cursor.execute(
+                    f"SELECT {pk_name}, {col_name} FROM {table_name} WHERE {col_name} IS NOT NULL"
+                )
+                rows = cursor.fetchall()
+                updates = []
+                for row in rows:
+                    raw_value = row[col_name]
+                    converted = to_app_tz_iso(raw_value)
+                    if converted and converted != raw_value:
+                        updates.append((converted, row[pk_name]))
+
+                if updates:
+                    cursor.executemany(
+                        f"UPDATE {table_name} SET {col_name} = ? WHERE {pk_name} = ?",
+                        updates
+                    )
+
+            cursor.execute(
+                """
+                INSERT INTO app_metadata(key, value)
+                VALUES (?, '1')
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (migration_key,)
+            )
+
     # User operations
     def create_user(self, username: str, password_hash: str) -> int:
         """Create a new user"""
@@ -159,10 +250,10 @@ class Database:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO users (username, password_hash)
-                VALUES (?, ?)
+                INSERT INTO users (username, password_hash, created_at)
+                VALUES (?, ?, ?)
                 """,
-                (username, password_hash)
+                (username, password_hash, now_in_app_tz_iso())
             )
             return cursor.lastrowid
 
@@ -177,7 +268,7 @@ class Database:
                 (username,)
             )
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return self._normalize_record_timestamps(dict(row)) if row else None
 
     def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
         """Get user by ID"""
@@ -190,33 +281,48 @@ class Database:
                 (user_id,)
             )
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return self._normalize_record_timestamps(dict(row)) if row else None
 
-    def increment_baseline_count(self, user_id: int):
-        """Increment user's baseline session count"""
+    def get_all_users(self) -> List[Dict[str, Any]]:
+        """Get all users with count of sessions valid for training."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                UPDATE users
-                SET baseline_count = baseline_count + 1
-                WHERE id = ?
-                """,
-                (user_id,)
+                SELECT
+                    u.id,
+                    u.username,
+                    u.created_at,
+                    COUNT(s.session_id) AS total_sessions,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN s.is_baseline = 1 AND s.end_time IS NOT NULL THEN 1
+                            ELSE 0
+                        END
+                    ), 0) AS train_valid_sessions
+                FROM users u
+                LEFT JOIN sessions s ON s.user_id = u.id
+                GROUP BY u.id, u.username, u.created_at
+                ORDER BY username ASC
+                """
             )
+            rows = cursor.fetchall()
+            return self._normalize_records_timestamps([dict(row) for row in rows])
 
-    def set_baseline_completed(self, user_id: int):
-        """Mark user's baseline as completed"""
+    def get_user_training_valid_session_count(self, user_id: int) -> int:
+        """Get count of ended sessions that are marked valid for training."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                UPDATE users
-                SET baseline_completed = 1
-                WHERE id = ?
+                SELECT COUNT(*) AS count
+                FROM sessions
+                WHERE user_id = ? AND is_baseline = 1 AND end_time IS NOT NULL
                 """,
                 (user_id,)
             )
+            row = cursor.fetchone()
+            return int(row['count']) if row else 0
 
     # Session operations
     def create_session(
@@ -226,20 +332,32 @@ class Database:
         ip_address: Optional[str] = None,
         device_fingerprint: Optional[str] = None,
         user_agent: Optional[str] = None,
-        is_baseline: bool = True
+        is_baseline: bool = False
     ) -> None:
-        """Create a new session"""
+        """Create a new session.
+
+        `is_baseline` is kept for backward compatibility and now means
+        "valid for training dataset".
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
                 INSERT INTO sessions (
-                    session_id, user_id, ip_address, device_fingerprint,
+                    session_id, user_id, start_time, ip_address, device_fingerprint,
                     user_agent, is_baseline
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (session_id, user_id, ip_address, device_fingerprint, user_agent, is_baseline)
+                (
+                    session_id,
+                    user_id,
+                    now_in_app_tz_iso(),
+                    ip_address,
+                    device_fingerprint,
+                    user_agent,
+                    is_baseline
+                )
             )
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
@@ -253,7 +371,7 @@ class Database:
                 (session_id,)
             )
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return self._normalize_record_timestamps(dict(row)) if row else None
 
     def update_session_event_count(self, session_id: str, count: int):
         """Update session event count"""
@@ -266,6 +384,19 @@ class Database:
                 WHERE session_id = ?
                 """,
                 (count, session_id)
+            )
+
+    def update_session_training_validity(self, session_id: str, is_valid: bool):
+        """Mark whether this session is valid to be used for model training."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE sessions
+                SET is_baseline = ?
+                WHERE session_id = ?
+                """,
+                (1 if is_valid else 0, session_id)
             )
 
     def update_session_risk_assessment(
@@ -294,10 +425,10 @@ class Database:
             cursor.execute(
                 """
                 UPDATE sessions
-                SET end_time = CURRENT_TIMESTAMP
+                SET end_time = ?
                 WHERE session_id = ?
                 """,
-                (session_id,)
+                (now_in_app_tz_iso(), session_id)
             )
 
     def get_all_sessions_detailed(self) -> List[Dict[str, Any]]:
@@ -311,7 +442,36 @@ class Database:
                 ORDER BY s.start_time DESC
             """)
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            return self._normalize_records_timestamps([dict(row) for row in rows])
+
+    def get_active_session_count(self) -> int:
+        """Get count of sessions that are still active in the database."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM sessions
+                WHERE end_time IS NULL
+                """
+            )
+            row = cursor.fetchone()
+            return int(row['count']) if row else 0
+
+    def get_active_sessions(self) -> List[Dict[str, Any]]:
+        """Get all active sessions for runtime restoration."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT *
+                FROM sessions
+                WHERE end_time IS NULL
+                ORDER BY start_time ASC
+                """
+            )
+            rows = cursor.fetchall()
+            return self._normalize_records_timestamps([dict(row) for row in rows])
 
     def delete_session(self, session_id: str) -> bool:
         """Delete a session and all its associated data"""
@@ -329,6 +489,120 @@ class Database:
             
             return cursor.rowcount > 0
 
+    def delete_user_and_related(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Delete a user and all related sessions/events/features/models.
+        Returns deletion summary, or None when user does not exist.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT id, username FROM users WHERE id = ?",
+                (user_id,)
+            )
+            user_row = cursor.fetchone()
+            if not user_row:
+                return None
+
+            cursor.execute(
+                "SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?",
+                (user_id,)
+            )
+            sessions_deleted = int(cursor.fetchone()['count'])
+
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM raw_events
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE user_id = ?
+                )
+                """,
+                (user_id,)
+            )
+            events_deleted = int(cursor.fetchone()['count'])
+
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM features
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE user_id = ?
+                )
+                """,
+                (user_id,)
+            )
+            features_deleted = int(cursor.fetchone()['count'])
+
+            cursor.execute(
+                "SELECT COUNT(*) AS count FROM models WHERE user_id = ?",
+                (user_id,)
+            )
+            models_deleted = int(cursor.fetchone()['count'])
+
+            cursor.execute(
+                """
+                DELETE FROM raw_events
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE user_id = ?
+                )
+                """,
+                (user_id,)
+            )
+            cursor.execute(
+                """
+                DELETE FROM features
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE user_id = ?
+                )
+                """,
+                (user_id,)
+            )
+            cursor.execute(
+                "DELETE FROM sessions WHERE user_id = ?",
+                (user_id,)
+            )
+            cursor.execute(
+                "DELETE FROM models WHERE user_id = ?",
+                (user_id,)
+            )
+            cursor.execute(
+                "DELETE FROM users WHERE id = ?",
+                (user_id,)
+            )
+
+            return {
+                'user_id': int(user_row['id']),
+                'username': user_row['username'],
+                'sessions_deleted': sessions_deleted,
+                'events_deleted': events_deleted,
+                'features_deleted': features_deleted,
+                'models_deleted': models_deleted
+            }
+
+    def reset_database(self) -> None:
+        """
+        Delete all application data while keeping schema intact.
+        This clears users, sessions, events, features, and models.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Child tables first, then parent tables.
+            cursor.execute("DELETE FROM raw_events")
+            cursor.execute("DELETE FROM features")
+            cursor.execute("DELETE FROM sessions")
+            cursor.execute("DELETE FROM models")
+            cursor.execute("DELETE FROM users")
+            cursor.execute("DELETE FROM app_metadata")
+
+            # Optional table for some branches/versions.
+            try:
+                cursor.execute("DELETE FROM user_profiles")
+            except sqlite3.OperationalError:
+                pass
+
     def get_user_sessions(self, user_id: int, limit: int = 100) -> List[Dict[str, Any]]:
         """Get sessions for a user"""
         with self.get_connection() as conn:
@@ -343,22 +617,26 @@ class Database:
                 (user_id, limit)
             )
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            return self._normalize_records_timestamps([dict(row) for row in rows])
 
-    def get_baseline_sessions(self, user_id: int) -> List[Dict[str, Any]]:
-        """Get baseline sessions for a user"""
+    def get_training_valid_sessions(self, user_id: int) -> List[Dict[str, Any]]:
+        """Get sessions marked valid for training for a user."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
                 SELECT * FROM sessions
-                WHERE user_id = ? AND is_baseline = 1
+                WHERE user_id = ? AND is_baseline = 1 AND end_time IS NOT NULL
                 ORDER BY start_time DESC
                 """,
                 (user_id,)
             )
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            return self._normalize_records_timestamps([dict(row) for row in rows])
+
+    def get_baseline_sessions(self, user_id: int) -> List[Dict[str, Any]]:
+        """Backward-compatible alias for get_training_valid_sessions."""
+        return self.get_training_valid_sessions(user_id)
 
     # Event operations
     def insert_event(self, session_id: str, event: Dict[str, Any]) -> int:
@@ -410,7 +688,10 @@ class Database:
                 (session_id,)
             )
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            return self._normalize_records_timestamps(
+                [dict(row) for row in rows],
+                fields=['created_at']
+            )
 
     def get_recent_events(self, session_id: str, limit: int = 90) -> List[Dict[str, Any]]:
         """Get recent events for a session (for rolling window)"""
@@ -426,7 +707,10 @@ class Database:
                 (session_id, limit)
             )
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            return self._normalize_records_timestamps(
+                [dict(row) for row in rows],
+                fields=['created_at']
+            )
 
     # Feature operations
     def save_features(self, session_id: str, features: Dict[str, float]) -> None:
@@ -472,10 +756,16 @@ class Database:
             if user_id:
                 cursor.execute(
                     f"""
-                    SELECT f.*, s.user_id, s.is_baseline
+                    SELECT
+                        f.*,
+                        s.user_id,
+                        s.is_baseline,
+                        s.start_time,
+                        s.end_time,
+                        s.event_count
                     FROM features f
                     JOIN sessions s ON f.session_id = s.session_id
-                    WHERE s.user_id = ? AND s.is_baseline = 1
+                    WHERE s.user_id = ? AND s.is_baseline = 1 AND s.end_time IS NOT NULL
                     ORDER BY f.created_at DESC
                     """,
                     (user_id,)
@@ -483,16 +773,25 @@ class Database:
             else:
                 cursor.execute(
                     f"""
-                    SELECT f.*, s.user_id, s.is_baseline
+                    SELECT
+                        f.*,
+                        s.user_id,
+                        s.is_baseline,
+                        s.start_time,
+                        s.end_time,
+                        s.event_count
                     FROM features f
                     JOIN sessions s ON f.session_id = s.session_id
-                    WHERE s.is_baseline = 1
+                    WHERE s.is_baseline = 1 AND s.end_time IS NOT NULL
                     ORDER BY f.created_at DESC
                     """
                 )
 
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            return self._normalize_records_timestamps(
+                [dict(row) for row in rows],
+                fields=['start_time', 'end_time', 'created_at']
+            )
 
     # Model operations
     def save_model_metadata(
@@ -509,11 +808,18 @@ class Database:
             cursor.execute(
                 """
                 INSERT INTO models (
-                    user_id, model_type, version, samples_used, accuracy_metrics
+                    user_id, model_type, version, trained_at, samples_used, accuracy_metrics
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, model_type, version, samples_used, json.dumps(accuracy_metrics) if accuracy_metrics else None)
+                (
+                    user_id,
+                    model_type,
+                    version,
+                    now_in_app_tz_iso(),
+                    samples_used,
+                    json.dumps(accuracy_metrics) if accuracy_metrics else None
+                )
             )
             return cursor.lastrowid
 
@@ -543,7 +849,7 @@ class Database:
                 )
 
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return self._normalize_record_timestamps(dict(row)) if row else None
 
     # Dashboard statistics
     def get_dashboard_stats(self) -> Dict[str, Any]:
@@ -565,27 +871,31 @@ class Database:
             cursor.execute("SELECT COUNT(*) as count FROM sessions WHERE end_time IS NULL")
             active_sessions = cursor.fetchone()['count']
 
-            # Risk distribution today
-            cursor.execute("""
-                SELECT COUNT(*) as count FROM sessions
-                WHERE DATE(start_time) = DATE('now')
-                AND risk_level = 'HIGH'
-            """)
-            high_risk_today = cursor.fetchone()['count']
+            # Risk distribution for current Jakarta day.
+            cursor.execute(
+                """
+                SELECT start_time, risk_level
+                FROM sessions
+                WHERE risk_level IS NOT NULL
+                """
+            )
+            today_local = now_in_app_tz().date()
+            high_risk_today = 0
+            medium_risk_today = 0
+            low_risk_today = 0
 
-            cursor.execute("""
-                SELECT COUNT(*) as count FROM sessions
-                WHERE DATE(start_time) = DATE('now')
-                AND risk_level = 'MEDIUM'
-            """)
-            medium_risk_today = cursor.fetchone()['count']
+            for row in cursor.fetchall():
+                local_dt = to_app_tz_datetime(row['start_time'])
+                if not local_dt or local_dt.date() != today_local:
+                    continue
 
-            cursor.execute("""
-                SELECT COUNT(*) as count FROM sessions
-                WHERE DATE(start_time) = DATE('now')
-                AND risk_level = 'LOW'
-            """)
-            low_risk_today = cursor.fetchone()['count']
+                risk_level = row['risk_level']
+                if risk_level == 'HIGH':
+                    high_risk_today += 1
+                elif risk_level == 'MEDIUM':
+                    medium_risk_today += 1
+                elif risk_level == 'LOW':
+                    low_risk_today += 1
 
             # Average risk score
             cursor.execute("""
@@ -618,7 +928,10 @@ class Database:
                 ORDER BY s.start_time DESC
                 LIMIT 10
             """)
-            recent_sessions = [dict(row) for row in cursor.fetchall()]
+            recent_sessions = self._normalize_records_timestamps(
+                [dict(row) for row in cursor.fetchall()],
+                fields=['start_time']
+            )
 
             return {
                 'total_users': total_users,

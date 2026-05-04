@@ -9,6 +9,51 @@
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .train-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            padding: 16px;
+        }
+        .train-modal {
+            width: min(860px, 100%);
+            max-height: 90vh;
+            overflow: auto;
+            background: #111827;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            padding: 20px;
+        }
+        .train-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 12px;
+        }
+        .feature-picker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+            max-height: 320px;
+            overflow: auto;
+            padding: 8px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            background: #0b1220;
+        }
+        .feature-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+    </style>
 </head>
 <body>
     <!-- Top Navigation -->
@@ -113,9 +158,9 @@
                         </div>
                     </div>
                     <div class="risk-gauge-legend">
-                        <span class="legend-item"><span class="risk-dot risk-dot-low"></span> 0.0 – 0.5 Low</span>
-                        <span class="legend-item"><span class="risk-dot risk-dot-medium"></span> 0.5 – 0.8 Medium</span>
-                        <span class="legend-item"><span class="risk-dot risk-dot-high"></span> 0.8 – 1.0 High</span>
+                        <span class="legend-item"><span class="risk-dot risk-dot-low"></span> &gt; 0.5 Low</span>
+                        <span class="legend-item"><span class="risk-dot risk-dot-medium"></span> 0.0 to 0.5 Medium</span>
+                        <span class="legend-item"><span class="risk-dot risk-dot-high"></span> &lt; 0.0 High</span>
                     </div>
                 </div>
             </div>
@@ -144,6 +189,16 @@
                 <div class="replay-controls">
                     <input type="text" id="replaySessionId" class="form-control" placeholder="Enter Session ID to replay">
                     <button id="loadReplayBtn" class="btn btn-primary btn-sm">Load</button>
+                </div>
+                <div class="replay-controls" style="margin-top: 10px;">
+                    <select id="reassessModelSelect" class="form-control">
+                        <option value="global">Global Model</option>
+                    </select>
+                    <button id="reassessBtn" class="btn btn-secondary btn-sm">Predict Risk Again</button>
+                </div>
+                <div id="riskChangeIndicator" class="risk-change-indicator risk-change-neutral" style="display: none;">
+                    <span id="riskChangeBadge" class="risk-change-badge">UNCHANGED</span>
+                    <span id="riskChangeText" class="risk-change-text"></span>
                 </div>
                 <div class="replay-canvas-wrapper">
                     <canvas id="replayCanvas"></canvas>
@@ -195,6 +250,53 @@
                 </div>
             </div>
         </section>
+    </div>
+
+    <div id="trainConfigModal" class="train-modal-overlay">
+        <div class="train-modal">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <h3 style="margin:0;">Train Model Configuration</h3>
+                <button id="closeTrainModalBtn" class="btn btn-ghost btn-sm">Close</button>
+            </div>
+
+            <div class="train-grid" style="margin-top:16px;">
+                <div>
+                    <label for="trainScopeSelect">Scope</label>
+                    <select id="trainScopeSelect" class="form-control">
+                        <option value="global">Global Model (all users)</option>
+                        <option value="personal">Personal Model (single user)</option>
+                    </select>
+                </div>
+                <div id="trainUserWrap" style="display:none;">
+                    <label for="trainUserSelect">User for Personal Model</label>
+                    <select id="trainUserSelect" class="form-control"></select>
+                </div>
+                <div>
+                    <label for="trainMinSamples">Min Samples</label>
+                    <input type="number" id="trainMinSamples" class="form-control" value="10" min="1">
+                </div>
+            </div>
+
+            <div style="margin-top:16px; display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                    <strong>Select Features</strong>
+                    <span id="selectedFeatureCount" style="margin-left:8px; color:var(--text-muted);"></span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button id="presetMouseOnlyBtn" class="btn btn-ghost btn-sm">Mouse only</button>
+                    <button id="presetKeyboardOnlyBtn" class="btn btn-ghost btn-sm">Keyboard only</button>
+                    <button id="selectAllFeaturesBtn" class="btn btn-secondary btn-sm">Select All</button>
+                    <button id="clearAllFeaturesBtn" class="btn btn-ghost btn-sm">Clear All</button>
+                </div>
+            </div>
+
+            <div id="trainFeatureList" class="feature-picker-grid"></div>
+
+            <div style="margin-top:16px; display:flex; justify-content:flex-end; gap:8px;">
+                <button id="cancelTrainBtn" class="btn btn-ghost btn-sm">Cancel</button>
+                <button id="confirmTrainBtn" class="btn btn-primary btn-sm">Start Training</button>
+            </div>
+        </div>
     </div>
 
     <div id="messageContainer"></div>

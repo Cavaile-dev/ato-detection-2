@@ -2,7 +2,7 @@
 Pydantic schemas for data validation and serialization
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -67,15 +67,58 @@ class EventsSubmitRequest(BaseModel):
     events: List[BehaviorEvent]
 
 class TrainModelRequest(BaseModel):
+    scope: str = Field("global", description="Training scope: global or personal")
     user_id: Optional[int] = Field(None, description="Train for specific user, or all if None")
+    selected_features: Optional[List[str]] = Field(
+        None,
+        description="Feature list used for training. If omitted, all features are used."
+    )
     min_samples: int = Field(10, ge=1, description="Minimum samples required for training")
+
+    @validator('scope')
+    def validate_scope(cls, v):
+        if v not in ('global', 'personal'):
+            raise ValueError("scope must be either 'global' or 'personal'")
+        return v
+
+class SessionReassessRequest(BaseModel):
+    scope: str = Field(
+        "global",
+        alias="model_scope",
+        description="Model scope: global, personal, or auto"
+    )
+    user_id: Optional[int] = Field(
+        None,
+        alias="model_user_id",
+        description="User id for personal model. Required when model_scope is personal."
+    )
+
+    @validator('scope')
+    def validate_model_scope(cls, v):
+        if v not in ('global', 'personal', 'auto'):
+            raise ValueError("model_scope must be one of: global, personal, auto")
+        return v
+
+    class Config:
+        populate_by_name = True
+
+    # Backward-compatibility properties so older code paths can still access
+    # model_scope/model_user_id without raising AttributeError.
+    @property
+    def model_scope(self) -> str:
+        return self.scope
+
+    @property
+    def model_user_id(self) -> Optional[int]:
+        return self.user_id
 
 # Response Schemas
 class UserResponse(BaseModel):
     id: int
     username: str
-    baseline_count: int
-    baseline_completed: bool
+    train_valid_sessions: int = 0
+    baseline_count: Optional[int] = None  # legacy field
+    baseline_completed: Optional[bool] = None  # legacy field
     created_at: datetime
 
     class Config:
@@ -157,6 +200,8 @@ class FeatureVector(BaseModel):
         return [self.model_dump()[col] for col in FEATURE_COLUMNS]
 
 class DashboardStatsResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     total_users: int
     total_sessions: int
     total_events: int
@@ -179,6 +224,8 @@ class SessionReplayResponse(BaseModel):
     features: FeatureVector
 
 class ModelTrainingResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     success: bool
     message: str
     user_id: Optional[int]

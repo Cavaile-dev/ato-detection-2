@@ -4,9 +4,8 @@ Unsupervised anomaly detection using Support Vector Machine
 """
 
 import numpy as np
-import pandas as pd
 from sklearn.svm import OneClassSVM
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 import joblib
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -25,7 +24,7 @@ class SVMModel:
 
     def __init__(self):
         self.model = None
-        self.scaler = StandardScaler()
+        self.scaler = RobustScaler()
         self.is_trained = False
         self.feature_names = FEATURE_COLUMNS
 

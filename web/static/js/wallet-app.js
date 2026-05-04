@@ -4,6 +4,8 @@
  */
 
 (function() {
+    const APP_TIMEZONE = 'Asia/Jakarta';
+
     // Dummy transaction data
     const TRANSACTIONS = [
         { id: 1, type: 'in',  label: 'Top Up via Bank Transfer',   amount: 500000,  date: '20 Apr 2026, 14:32', icon: '↑' },
@@ -97,7 +99,7 @@
             // Add to transaction list
             TRANSACTIONS.unshift({
                 id: Date.now(), type: 'in', label: 'Top Up', icon: '↑',
-                amount: amount, date: new Date().toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+                amount: amount, date: new Date().toLocaleString('id-ID', { timeZone: APP_TIMEZONE, day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
             });
             renderTransactions();
             hideModals();
@@ -134,7 +136,7 @@
 
             TRANSACTIONS.unshift({
                 id: Date.now(), type: 'out', label: `Transfer to ${recipient}${note ? ' - ' + note : ''}`, icon: '→',
-                amount: amount, date: new Date().toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+                amount: amount, date: new Date().toLocaleString('id-ID', { timeZone: APP_TIMEZONE, day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
             });
             renderTransactions();
             hideModals();

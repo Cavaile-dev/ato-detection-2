@@ -4,9 +4,9 @@ Handles risk scoring and decision making based on anomaly scores
 """
 
 from typing import Dict, List, Any, Optional
-from datetime import datetime
 import numpy as np
 
+from server.time_utils import now_in_app_tz, now_in_app_tz_iso
 from server.config import (
     RISK_THRESHOLD_LOW,
     RISK_THRESHOLD_MEDIUM,
@@ -77,7 +77,7 @@ class RiskEngine:
             'reasons': reasons,
             'individual_scores': individual_scores,
             'feature_contributions': feature_contributions,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': now_in_app_tz_iso()
         }
 
     def _generate_reasons(
@@ -240,7 +240,7 @@ class RiskAssessment:
         self.reasons = reasons
         self.individual_scores = individual_scores
         self.feature_contributions = feature_contributions
-        self.timestamp = datetime.utcnow()
+        self.timestamp = now_in_app_tz()
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""

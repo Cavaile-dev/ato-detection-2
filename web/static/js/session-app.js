@@ -9,7 +9,6 @@ class SessionApp {
         this.sessionId = null;
         this.userId = null;
         this.username = null;
-        this.baselineCompleted = false;
         this.submitInterval = null;
         this.eventCount = 0;
 
@@ -21,7 +20,6 @@ class SessionApp {
         this.sessionId = sessionStorage.getItem('sessionId');
         this.userId = sessionStorage.getItem('userId');
         this.username = sessionStorage.getItem('username');
-        this.baselineCompleted = sessionStorage.getItem('baselineCompleted') === 'true';
 
         if (!this.sessionId || !this.userId) {
             window.location.href = '/';
@@ -44,16 +42,7 @@ class SessionApp {
     updateUI() {
         document.getElementById('usernameDisplay').textContent = this.username;
         document.getElementById('sessionId').textContent = this.sessionId.substring(0, 8) + '...';
-        document.getElementById('baselineStatus').textContent = this.baselineCompleted ? 'Yes' : 'No';
-
-        if (this.baselineCompleted) {
-            document.getElementById('instructions').innerHTML = `
-                <p><strong>Baseline Completed!</strong></p>
-                <p>Your behavioral baseline has been established.</p>
-                <p>The system will now monitor for anomalous behavior.</p>
-                <p>Navigate naturally - the system will alert if suspicious activity is detected.</p>
-            `;
-        }
+        document.getElementById('trainingValidStatus').textContent = 'Pending (session active)';
     }
 
     setupEventListeners() {
@@ -89,6 +78,16 @@ class SessionApp {
             if (result.success) {
                 this.eventCount += result.data.events_processed;
                 document.getElementById('eventCount').textContent = this.eventCount;
+
+                const totalEvents = result.data.total_events || 0;
+                const trainingValidStatus = document.getElementById('trainingValidStatus');
+                if (trainingValidStatus) {
+                    if (totalEvents >= 30) {
+                        trainingValidStatus.textContent = 'Likely valid (finalized when session ends)';
+                    } else {
+                        trainingValidStatus.textContent = `Not yet (${30 - totalEvents} events remaining)`;
+                    }
+                }
 
                 this.showMessage(`Submitted ${result.data.events_processed} events`, 'success');
 
@@ -176,7 +175,7 @@ class SessionApp {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    user_id: parseInt(this.userId),
+                    scope: 'global',
                     min_samples: 10
                 })
             });
@@ -208,7 +207,13 @@ class SessionApp {
         const log = document.getElementById('activityLog');
         const entry = document.createElement('div');
         entry.className = 'log-entry';
-        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        const nowLabel = new Date().toLocaleTimeString('id-ID', {
+            timeZone: 'Asia/Jakarta',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+        entry.textContent = `[${nowLabel}] ${message}`;
         log.insertBefore(entry, log.firstChild);
 
         // Keep only last 50 entries
@@ -218,6 +223,8 @@ class SessionApp {
     }
 
     async logout() {
+        window.isInternalNavigation = true;
+
         // End session
         try {
             await fetch(`/api/v1/sessions/${this.sessionId}/end`, {
@@ -225,6 +232,14 @@ class SessionApp {
             });
         } catch (error) {
             console.error('Error ending session:', error);
+        }
+
+        try {
+            await fetch('/api/v1/logout', {
+                method: 'POST'
+            });
+        } catch (error) {
+            console.error('Error clearing server session:', error);
         }
 
         // Stop logging

@@ -156,6 +156,7 @@ class ShopApp {
         this.sessionId = sessionStorage.getItem('sessionId');
         this.userId = sessionStorage.getItem('userId');
         this.username = sessionStorage.getItem('username');
+        window.isInternalNavigation = false;
 
         if (!this.sessionId || !this.userId) {
             window.location.href = '/';
@@ -186,21 +187,36 @@ class ShopApp {
         this.setupExitHandler();
     }
 
+    markInternalNavigation() {
+        window.isInternalNavigation = true;
+    }
+
+    isInlineNavigationElement(element) {
+        const onclick = element?.getAttribute?.('onclick') || '';
+        return /window\.location|location\.href|location\.assign|location\.replace/.test(onclick);
+    }
+
     setupExitHandler() {
         // Track internal navigation
         document.addEventListener('click', (e) => {
             const a = e.target.closest('a');
             if (a && a.href && a.host === window.location.host) {
-                window.isInternalNavigation = true;
+                this.markInternalNavigation();
+                return;
+            }
+
+            const button = e.target.closest('button, [role="button"]');
+            if (button && this.isInlineNavigationElement(button)) {
+                this.markInternalNavigation();
             }
         });
 
         // Form submissions also count as internal navigation
         document.addEventListener('submit', () => {
-            window.isInternalNavigation = true;
+            this.markInternalNavigation();
         });
 
-        window.addEventListener('beforeunload', (e) => {
+        window.addEventListener('beforeunload', () => {
             if (!window.isInternalNavigation) {
                 // Not an internal navigation, meaning user is leaving or closing tab
                 this.behaviorLogger.stop();
@@ -601,11 +617,19 @@ class ShopApp {
     }
 
     async logout() {
+        this.markInternalNavigation();
+
         try {
             await this.submitEvents();
             await fetch(`/api/v1/sessions/${this.sessionId}/end`, { method: 'POST' });
         } catch (e) {
             console.error('Logout error:', e);
+        }
+
+        try {
+            await fetch('/api/v1/logout', { method: 'POST' });
+        } catch (e) {
+            console.error('Server logout error:', e);
         }
 
         this.behaviorLogger.stop();
@@ -617,5 +641,5 @@ class ShopApp {
 
 // ===== Initialize =====
 document.addEventListener('DOMContentLoaded', () => {
-    new ShopApp();
+    window.shopApp = new ShopApp();
 });

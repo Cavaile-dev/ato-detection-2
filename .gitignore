@@ -21,6 +21,7 @@ model/*.h5
 model/*.pkl
 model/*.joblib
 model/*.weights
+model/personal/
 logs/*.log
 
 # === Web / Frontend ===

@@ -88,7 +88,22 @@
                     sessionStorage.setItem('userId', result.data.user_id);
                     sessionStorage.setItem('username', result.data.username);
                     sessionStorage.setItem('sessionId', result.data.session_id);
-                    sessionStorage.setItem('baselineCompleted', result.data.baseline_completed);
+                    sessionStorage.setItem('trainValidSessions', result.data.train_valid_sessions || 0);
+
+                    if (events.length > 0) {
+                        try {
+                            await fetch('/api/v1/events', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    session_id: result.data.session_id,
+                                    events: events
+                                })
+                            });
+                        } catch (eventError) {
+                            console.error('Could not submit login-page events:', eventError);
+                        }
+                    }
 
                     showMessage('Welcome back! Redirecting...', 'success');
                     setTimeout(() => { window.location.href = '/shop'; }, 800);

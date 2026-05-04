@@ -128,6 +128,30 @@ img { max-width: 100%; display: block; }
     box-shadow: 0 0 0 3px rgba(255,255,255,0.05);
 }
 
+/* Make native select dropdowns readable in dark theme */
+select.form-control {
+    cursor: pointer;
+    color: var(--text-primary) !important;
+    background-color: var(--bg-input) !important;
+    -webkit-text-fill-color: var(--text-primary);
+    text-shadow: none;
+}
+select.form-control:focus,
+select.form-control:active {
+    color: var(--text-primary) !important;
+    background-color: var(--bg-input-focus) !important;
+    -webkit-text-fill-color: var(--text-primary);
+}
+select.form-control option,
+select.form-control optgroup {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+select.form-control option:checked {
+    background: #2a2a3d;
+    color: var(--text-primary);
+}
+
 /* ===== Login Page ===== */
 .login-container {
     display: flex; justify-content: center; align-items: center;
